@@ -1,9 +1,9 @@
 
 param userAssignedIdentity string
 param storageAccountName string
-param location string = resourceGroup().location
 param keyName string
 param keyVaultUri string
+param location string = resourceGroup().location
 param tags object = {}
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {

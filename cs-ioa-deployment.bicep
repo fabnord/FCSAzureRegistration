@@ -1,6 +1,13 @@
 targetScope = 'subscription'
 
-/* Parameter */
+/*
+  This Bicep template deploys infrastructure to enable CrowdStrike 
+  Indicator of Attack (IOA) assessment.
+
+  Copyright (c) 2024 CrowdStrike, Inc.
+*/
+
+/* Parameters */
 @description('The location for the resources deployed in this solution.')
 param location string = deployment().location
 
@@ -30,9 +37,19 @@ param falconClientId string
 @secure()
 param falconClientSecret string
 
+@description('Enable Application Insights for additional logging of Function Apps.')
+#disable-next-line no-unused-params
+param enableAppInsights bool = false
+
+@description('Enable Activity Log diagnostic settings deployment for current subscription.')
+param deployActivityLogDiagnosticSettings bool = true
+
+@description('Enable Entra ID Log diagnostic settings deployment. Requires at least Security Administrator permissions')
+param deployEntraLogDiagnosticSettings bool = true
+
 param randomSuffix string = uniqueString(resourceGroupName, subscription().subscriptionId)
 
-/* Parameterbag for CS Logs */
+/* ParameterBag for CS Logs */
 param csLogSettings object = {
   storageAccountName: substring('cshorizonlogs${randomSuffix}', 0, 24)
   storageAccountIdentityName: substring('cshorizonlogs${randomSuffix}', 0, 24)
@@ -40,30 +57,34 @@ param csLogSettings object = {
   storagePrivateEndpointConnectionName: 'cs-log-storage-private-endpoint'
 }
 
-/* Parameterbag for Activity Logs */
+/* ParameterBag for Activity Logs */
 param activityLogSettings object = {
   hostingPlanName: 'cs-activity-service-plan'
   functionAppName: 'cs-activity-func-${subscription().subscriptionId}'
   functionAppIdentityName: 'cs-activity-func-${subscription().subscriptionId}'
+  functionAppDiagnosticSettingName: 'cs-activity-func-to-storage'
   ioaPackageURL: 'https://cs-prod-cloudconnect-templates.s3-us-west-1.amazonaws.com/azure/4.x/ioa.zip'
   storageAccountName: substring('cshorizonact${randomSuffix}', 0, 24)
   storageAccountIdentityName: substring('cshorizonact${randomSuffix}', 0, 24)
   storagePrivateEndpointName: 'activity-storage-private-endpoint'
   storagePrivateEndpointConnectionName: 'cs-activity-storage-private-endpoint'
   eventHubName: 'cs-eventhub-monitor-activity-logs'
+  diagnosticSetttingsName: 'cs-monitor-activity-to-eventhub'
 }
 
-/* Parameterbag for EntraId Logs */
+/* ParameterBag for EntraId Logs */
 param entraLogSettings object = {
   hostingPlanName: 'cs-aad-service-plan'
   functionAppName: 'cs-aad-func-${subscription().subscriptionId}'
   functionAppIdentityName: 'cs-aad-func-${subscription().subscriptionId}'
+  functionAppDiagnosticSettingName: 'cs-aad-func-to-storage'
   ioaPackageURL: 'https://cs-prod-cloudconnect-templates.s3-us-west-1.amazonaws.com/azure/4.x/ioa.zip'
   storageAccountName: substring('cshorizonaad${randomSuffix}', 0, 24)
   storageAccountIdentityName: substring('cshorizonaad${randomSuffix}', 0, 24)
   storagePrivateEndpointName: 'aad-storage-private-endpoint'
   storagePrivateEndpointConnectionName: 'cs-aad-storage-private-endpoint'
   eventHubName: 'cs-eventhub-monitor-aad-logs'
+  diagnosticSetttingsName: 'cs-aad-to-eventhub'
 }
 
 /* Variables */
@@ -72,6 +93,7 @@ var keyVaultName = 'cs-kv-${randomSuffix}'
 var virtualNetworkName = 'cs-vnet'
 var scope = az.resourceGroup(resourceGroup.name)
 
+/* Resource Deployment */
 resource resourceGroup 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   name: resourceGroupName
   location: location
@@ -114,7 +136,7 @@ module keyVault 'modules/keyVault.bicep' = {
   }
 }
 
-/* General CS Log Storage */
+/* Create CrowdStrike Log Storage Account */
 module csLogStorage 'modules/storageAccount.bicep' = {
   scope: scope
   name: '${deploymentNamePrefix}-csLogStorage-${deploymentNameSuffix}'
@@ -130,6 +152,7 @@ module csLogStorage 'modules/storageAccount.bicep' = {
   }
 }
 
+/* Enable CrowdStrike Log Storage Account Encryption */
 module csLogStorageEncryption 'modules/enableEncryption.bicep' = {
   name: '${deploymentNamePrefix}-csLogStorageEncryption-${deploymentNameSuffix}'
   scope: scope
@@ -141,7 +164,21 @@ module csLogStorageEncryption 'modules/enableEncryption.bicep' = {
   }
 }
 
-/* Activity Log Storage */
+/* Create KeyVault Diagnostic Setting to CrowdStrike Log Storage Account */
+module keyVaultDiagnosticSetting 'modules/keyVaultDiagnosticSetting.bicep' = {
+  name: '${deploymentNamePrefix}-keyVaultDiagnosticSetting-${deploymentNameSuffix}'
+  scope: scope
+  params: {
+    keyVaultName: keyVault.outputs.keyVaultName
+    storageAccountName: csLogStorage.outputs.storageAccountName
+  }
+  dependsOn: [
+    csLogStorage
+    csLogStorageEncryption
+  ]
+}
+
+/* Create Activity Log Diagnostic Storage Account */
 module activityLogStorage 'modules/storageAccount.bicep' = {
   scope: scope
   name: '${deploymentNamePrefix}-activityLogStorage-${deploymentNameSuffix}'
@@ -157,6 +194,7 @@ module activityLogStorage 'modules/storageAccount.bicep' = {
   }
 }
 
+/* Enable Activity Log Diagnostic Storage Account Encryption */
 module activityLogStorageEncryption 'modules/enableEncryption.bicep' = {
   name: '${deploymentNamePrefix}-activityLogStorageEncryption-${deploymentNameSuffix}'
   scope: scope
@@ -169,7 +207,7 @@ module activityLogStorageEncryption 'modules/enableEncryption.bicep' = {
   }
 }
 
-/* EntraId Log Storage */
+/* Create Entra ID Log Diagnostic Storage Account */
 module entraLogStorage 'modules/storageAccount.bicep' = {
   scope: scope
   name: '${deploymentNamePrefix}-entraLogStorage-${deploymentNameSuffix}'
@@ -185,6 +223,7 @@ module entraLogStorage 'modules/storageAccount.bicep' = {
   }
 }
 
+/* Enable Entra ID Log Diagnostic Storage Account Encryption */
 module entraLogStorageEncryption 'modules/enableEncryption.bicep' = {
   name: '${deploymentNamePrefix}-entraLogStorageEncryption-${deploymentNameSuffix}'
   scope: scope
@@ -197,7 +236,7 @@ module entraLogStorageEncryption 'modules/enableEncryption.bicep' = {
   }
 }
 
-/* Activity Log Function Deployment */
+/* Create User-Assigned Managed Identity for Activity Log Diagnostic Function */
 module activityLogFunctionIdentity 'modules/functionIdentity.bicep' = {
   name: '${deploymentNamePrefix}-activityLogFunctionIdentity-${deploymentNameSuffix}'
   scope: scope
@@ -214,6 +253,7 @@ module activityLogFunctionIdentity 'modules/functionIdentity.bicep' = {
   ]
 }
 
+/* Create Azuure Function to forward Activity Logs to CrowdStrike */
 module activityLogFunction 'modules/functionApp.bicep' = {
   name: '${deploymentNamePrefix}-activityLogFunction-${deploymentNameSuffix}'
   scope: scope
@@ -227,6 +267,7 @@ module activityLogFunction 'modules/functionApp.bicep' = {
     eventHubName: activityLogSettings.eventHubName
     virtualNetworkName: virtualNetwork.outputs.virtualNetworkName
     virtualNetworkSubnetId: virtualNetwork.outputs.csSubnet1Id
+    diagnosticSettingName: activityLogSettings.functionAppDiagnosticSettingName
     csCID: falconCID
     csClientIdUri: keyVault.outputs.csClientIdUri
     csClientSecretUri: keyVault.outputs.csClientSecretUri
@@ -239,7 +280,7 @@ module activityLogFunction 'modules/functionApp.bicep' = {
   ]
 }
 
-/* EntraId Log Function Deployment */
+/* Create User-Assigned Managed Identity for Entra ID Log Diagnostic Function */
 module entraLogFunctionIdentity 'modules/functionIdentity.bicep' = {
   name: '${deploymentNamePrefix}-entraLogFunctionIdentity-${deploymentNameSuffix}'
   scope: scope
@@ -256,6 +297,7 @@ module entraLogFunctionIdentity 'modules/functionIdentity.bicep' = {
   ]
 }
 
+/* Create Azuure Function to forward Entra ID Logs to CrowdStrike */
 module entraLogFunction 'modules/functionApp.bicep' = {
   name: '${deploymentNamePrefix}-entraLogFunction-${deploymentNameSuffix}'
   scope: scope
@@ -269,6 +311,7 @@ module entraLogFunction 'modules/functionApp.bicep' = {
     eventHubName: entraLogSettings.eventHubName
     virtualNetworkName: virtualNetwork.outputs.virtualNetworkName
     virtualNetworkSubnetId: virtualNetwork.outputs.csSubnet2Id
+    diagnosticSettingName: entraLogSettings.functionAppDiagnosticSettingName
     csCID: falconCID
     csClientIdUri: keyVault.outputs.csClientIdUri
     csClientSecretUri: keyVault.outputs.csClientSecretUri
@@ -280,22 +323,126 @@ module entraLogFunction 'modules/functionApp.bicep' = {
     entraLogFunctionIdentity
   ]
 }
-/*
-resource keyVaultDiagnosticSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
-  name: 'cs-kv-to-storage'
-  scope: keyVault
+
+/* 
+  Deploy Diagnostic Settings for Azure Activity Logs - current Azure subscription
+
+  Collect Azure Activity Logs and submit them to CrowdStrike for analysis of Indicators of Attack (IOA)
+
+  Note:
+   - 'Contributor' permissions are required to create Azure Activity Logs diagnostic settings
+*/
+resource activityDiagnosticSetttings 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (deployActivityLogDiagnosticSettings) {
+  name: activityLogSettings.diagnosticSetttingsName
   properties: {
+    eventHubAuthorizationRuleId: eventHub.outputs.eventHubAuthorizationRuleId
+    eventHubName: activityLogSettings.eventHubName
     logs: [
       {
-        categoryGroup: 'audit'
+        category: 'Administrative'
         enabled: true
       }
       {
-        categoryGroup: 'allLogs'
+        category: 'Security'
+        enabled: true
+      }
+      {
+        category: 'ServiceHealth'
+        enabled: true
+      }
+      {
+        category: 'Alert'
+        enabled: true
+      }
+      {
+        category: 'Recommendation'
+        enabled: true
+      }
+      {
+        category: 'Policy'
+        enabled: true
+      }
+      {
+        category: 'Autoscale'
+        enabled: true
+      }
+      {
+        category: 'ResourceHealth'
         enabled: true
       }
     ]
-    storageAccountId: logStorageAccount.id
   }
 }
+
+/* 
+  Deploy Diagnostic Settings for Microsoft Entra ID Logs
+
+  Collect Microsoft Entra ID logs and submit them to CrowdStrike for analysis of Indicators of Attack (IOA)
+
+  Note:
+   - To export SignInLogs a P1 or P2 Microsoft Entra ID license is required
+   - 'Security Administrator' or 'Global Administrator' Entra ID permissions are required
 */
+resource entraDiagnosticSetttings 'microsoft.aadiam/diagnosticSettings@2017-04-01' = if (deployEntraLogDiagnosticSettings) {
+  name: entraLogSettings.diagnosticSetttingsName
+  scope: tenant()
+  properties: {
+    eventHubAuthorizationRuleId: eventHub.outputs.eventHubAuthorizationRuleId
+    eventHubName: activityLogSettings.eventHubName
+    logs: [
+      {
+        category: 'AuditLogs'
+        enabled: true
+        retentionPolicy: {
+          days: 0
+          enabled: false
+        }
+      }
+      {
+        category: 'SignInLogs'
+        enabled: true
+        retentionPolicy: {
+          days: 0
+          enabled: false
+        }
+      }
+      {
+        category: 'NonInteractiveUserSignInLogs'
+        enabled: true
+        retentionPolicy: {
+          days: 0
+          enabled: false
+        }
+      }
+      {
+        category: 'ServicePrincipalSignInLogs'
+        enabled: true
+        retentionPolicy: {
+          days: 0
+          enabled: false
+        }
+      }
+      {
+        category: 'ManagedIdentitySignInLogs'
+        enabled: true
+        retentionPolicy: {
+          days: 0
+          enabled: false
+        }
+      }
+      {
+        category: 'ADFSSignInLogs'
+        enabled: true
+        retentionPolicy: {
+          days: 0
+          enabled: false
+        }
+      }
+    ]
+  }
+}
+
+/* Deployment outputs required for follow-up activities */
+output eventHubAuthorizationRuleId string = eventHub.outputs.eventHubAuthorizationRuleId
+output activityLogEventHubName string = eventHub.outputs.activityLogEventHubName
+output entraLogEventHubName string = eventHub.outputs.entraLogEventHubName

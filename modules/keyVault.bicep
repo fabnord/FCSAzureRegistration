@@ -3,6 +3,7 @@ param virtualNetworkName string
 param falconClientId string
 @secure()
 param falconClientSecret string
+param location string = resourceGroup().location
 param tags object = {}
 
 resource virtualNetwork 'Microsoft.Network/virtualNetworks@2019-11-01' existing = {
@@ -11,7 +12,7 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2019-11-01' existing 
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: keyVaultName
-  location: resourceGroup().location
+  location: location
   tags: tags
   properties: {
     enabledForDeployment: false
@@ -47,7 +48,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 
 resource keyVaultPrivateEndpoint 'Microsoft.Network/privateEndpoints@2022-01-01' = {
   name: 'kv-private-endpoint'
-  location: resourceGroup().location
+  location: location
   tags: tags
   properties: {
     privateLinkServiceConnections: [

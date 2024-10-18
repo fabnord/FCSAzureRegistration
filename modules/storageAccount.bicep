@@ -1,12 +1,12 @@
 param userAssignedIdentityName string
 param storageAccountName string
-param location string = resourceGroup().location
 param keyVaultName string
 param keyVaultCryptoOfficerRoleId string = '14b46e9e-c2b7-41b4-b07b-48a6ebf60603'
 param storageAccountSubnetId string
 param storagePrivateEndpointName string
 param storagePrivateEndpointConnectionName string
 param storagePrivateEndpointSubnetId string
+param location string = resourceGroup().location
 param tags object = {}
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
@@ -151,3 +151,4 @@ resource storagePrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' 
 
 output userAssignedIdentityId string = userAssignedIdentity.id
 output storageAccountName string = storageAccount.name
+output storageAccountId string = storageAccount.id

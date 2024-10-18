@@ -2,6 +2,8 @@ param eventHubNamespaceName string
 param virtualNetworkName string
 param activityLogEventHubName string
 param entraLogEventHubName string
+param authorizationRuleName string = 'cs-eventhub-monitor-auth-rule'
+param location string = resourceGroup().location
 param tags object = {}
 
 resource virtualNetwork 'Microsoft.Network/virtualNetworks@2019-11-01' existing = {
@@ -10,7 +12,7 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2019-11-01' existing 
 
 resource eventHubNamespace 'Microsoft.EventHub/namespaces@2024-01-01' = {
   name: eventHubNamespaceName
-  location: resourceGroup().location
+  location: location
   tags: tags
   sku: {
     capacity: 2
@@ -79,7 +81,7 @@ resource entraLogEventHub 'Microsoft.EventHub/namespaces/eventhubs@2024-01-01' =
 }
 
 resource authorizationRule 'Microsoft.EventHub/namespaces/authorizationRules@2024-01-01' = {
-  name: 'cs-eventhub-monitor-auth-rule'
+  name: authorizationRuleName
   parent: eventHubNamespace
   properties: {
     rights: [
@@ -90,3 +92,6 @@ resource authorizationRule 'Microsoft.EventHub/namespaces/authorizationRules@202
 
 output eventHubNamespaceName string = eventHubNamespace.name
 output eventHubNamespaceServiceBusEndpoint string = eventHubNamespace.properties.serviceBusEndpoint
+output eventHubAuthorizationRuleId string = authorizationRule.id
+output activityLogEventHubName string = activityLogEventHub.name
+output entraLogEventHubName string = entraLogEventHub.name

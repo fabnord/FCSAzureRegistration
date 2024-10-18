@@ -1,9 +1,9 @@
-param location string = resourceGroup().location
 param functionAppIdentityName string
 param principalType string = 'ServicePrincipal'
 param keyVaultName string
 param storageAccountName string
 param eventHubNamespaceName string
+param location string = resourceGroup().location
 param tags object = {}
 
 #disable-next-line secure-secrets-in-params

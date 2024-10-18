@@ -1,4 +1,3 @@
-param location string = resourceGroup().location
 param hostingPlanName string
 param functionAppName string
 param userAssignedIdentityId string
@@ -11,6 +10,8 @@ param virtualNetworkSubnetId string
 param csCID string
 param csClientIdUri string
 param csClientSecretUri string
+param diagnosticSettingName string
+param location string = resourceGroup().location
 param tags object = {}
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
@@ -134,5 +135,77 @@ resource functionApp 'Microsoft.Web/sites@2020-12-01' = {
     }
     storageAccountRequired: true
     virtualNetworkSubnetId: virtualNetworkSubnetId
+  }
+}
+
+resource autoscaleSetting 'Microsoft.Insights/autoscalesettings@2022-10-01' = {
+  name: hostingPlan.name
+  location: location
+  tags: tags
+  properties: {
+    enabled: true
+    profiles: [
+      {
+        name: hostingPlan.name
+        capacity: {
+          default: '1'
+          maximum: '8'
+          minimum: '1'
+        }
+        rules: [
+          {
+            metricTrigger: {
+              metricName: 'CpuPercentage'
+              metricResourceUri: hostingPlan.id
+              operator: 'GreaterThan'
+              statistic: 'Average'
+              threshold: 60
+              timeAggregation: 'Average'
+              timeGrain: 'PT1M'
+              timeWindow: 'PT5M'
+            }
+            scaleAction: {
+              cooldown: 'PT5M'
+              direction: 'Increase'
+              type: 'ChangeCount'
+              value: '1'
+            }
+          }
+          {
+            metricTrigger: {
+              metricName: 'CpuPercentage'
+              metricResourceUri: hostingPlan.id
+              operator: 'LessThan'
+              statistic: 'Average'
+              threshold: 25
+              timeAggregation: 'Average'
+              timeGrain: 'PT1M'
+              timeWindow: 'PT5M'
+            }
+            scaleAction: {
+              cooldown: 'PT5M'
+              direction: 'Decrease'
+              type: 'ChangeCount'
+              value: '1'
+            }
+          }
+        ]
+      }
+    ]
+    targetResourceUri: hostingPlan.id
+  }
+}
+
+resource diagnosticSetting 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: diagnosticSettingName
+  scope: functionApp
+  properties: {
+    logs: [
+      {
+        category: 'FunctionAppLogs'
+        enabled: true
+      }
+    ]
+    storageAccountId: storageAccount.id
   }
 }

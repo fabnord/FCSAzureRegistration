@@ -4,11 +4,12 @@ param subnetNames array = [
   'cs-subnet-2'
   'cs-subnet-3'
 ]
+param location string = resourceGroup().location
 param tags object = {}
 
 resource virtualNetwork 'Microsoft.Network/virtualNetworks@2019-11-01' = {
   name: virtualNetworkName
-  location: resourceGroup().location
+  location: location
   tags: tags
   properties: {
     addressSpace: {
