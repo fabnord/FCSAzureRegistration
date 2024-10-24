@@ -60,4 +60,6 @@ resource eventHubNamespaceRoleAssignment 'Microsoft.Authorization/roleAssignment
 }
 
 output functionIdentityId string = functionIdentity.id
+output functionIdentityName string = functionIdentity.name
+output functionIdentityClientId string = functionIdentity.properties.clientId
 output functionIdentityPrincipalId string = functionIdentity.properties.principalId

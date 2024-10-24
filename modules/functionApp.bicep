@@ -1,6 +1,6 @@
 param hostingPlanName string
 param functionAppName string
-param userAssignedIdentityId string
+param functionAppIdentityName string
 param packageURL string
 param storageAccountName string
 param eventHubNamespaceName string
@@ -18,13 +18,17 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' existing 
   name: storageAccountName
 }
 
+resource functionIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
+  name: functionAppIdentityName
+}
+
 resource hostingPlan 'Microsoft.Web/serverfarms@2022-09-01' = {
   name: hostingPlanName
   location: location
   tags: tags
   sku: {
-    name: 'S1'
-    tier: 'Standard'
+    name: 'P0V3'
+    tier: 'Premium'
   }
   kind: 'Linux'
   properties: {
@@ -40,13 +44,14 @@ resource functionApp 'Microsoft.Web/sites@2020-12-01' = {
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
-      '${userAssignedIdentityId}': {}
+      '${functionIdentity.id}': {}
     }
   }
   properties: {
     clientCertEnabled: true
     enabled: true
     httpsOnly: true
+    keyVaultReferenceIdentity: functionIdentity.id
     serverFarmId: hostingPlan.id
     siteConfig: {
       alwaysOn: true
@@ -77,11 +82,15 @@ resource functionApp 'Microsoft.Web/sites@2020-12-01' = {
         }
         {
           name: 'AzureWebJobsStorage__blobServiceUri'
-          value: storageAccount.properties.primaryEndpoints.blob
+          value: '${storageAccount.name}.blob.${environment().suffixes.storage}'
         }
         {
           name: 'AzureWebJobsStorage__accountName'
           value: storageAccount.name
+        }
+        {
+          name: 'AzureWebJobsStorage'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
         }
         {
           name: 'AzureEventHubConnectionString__fullyQualifiedNamespace'
@@ -115,6 +124,9 @@ resource functionApp 'Microsoft.Web/sites@2020-12-01' = {
           name: 'WEBSITE_VNET_ROUTE_ALL'
           value: '1'
         }
+        { name: 'AZURE_CLIENT_ID'
+          value: functionIdentity.properties.clientId
+        }
       ]
       ftpsState: 'Disabled'
       http20Enabled: true
@@ -133,7 +145,7 @@ resource functionApp 'Microsoft.Web/sites@2020-12-01' = {
       use32BitWorkerProcess: false
       vnetName: virtualNetworkName
     }
-    storageAccountRequired: true
+    storageAccountRequired: false
     virtualNetworkSubnetId: virtualNetworkSubnetId
   }
 }

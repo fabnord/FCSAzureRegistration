@@ -18,7 +18,7 @@ param deploymentNamePrefix string = 'cs-ioa'
 param deploymentNameSuffix string = utcNow()
 
 @description('The name of the resource group.')
-param resourceGroupName string = 'cs-ioa-group'
+param resourceGroupName string = 'cs-ioa-group' // DO NOT CHANGE - used for registration validation
 
 @description('Tags to be applied to all resources.')
 param tags object = {
@@ -37,6 +37,14 @@ param falconClientId string
 @secure()
 param falconClientSecret string
 
+@description('The Falcon cloud region.')
+@allowed([
+  'US-1'
+  'US-2'
+  'EU-1'
+])
+param falconCloudRegion string = 'US-1'
+
 @description('Enable Application Insights for additional logging of Function Apps.')
 #disable-next-line no-unused-params
 param enableAppInsights bool = false
@@ -49,6 +57,9 @@ param deployEntraLogDiagnosticSettings bool = true
 
 param randomSuffix string = uniqueString(resourceGroupName, subscription().subscriptionId)
 
+param subscriptionId string = subscription().subscriptionId
+// param subscriptionId string = newGuid() // Development only to ensure proper creation of resources
+
 /* ParameterBag for CS Logs */
 param csLogSettings object = {
   storageAccountName: substring('cshorizonlogs${randomSuffix}', 0, 24)
@@ -60,35 +71,35 @@ param csLogSettings object = {
 /* ParameterBag for Activity Logs */
 param activityLogSettings object = {
   hostingPlanName: 'cs-activity-service-plan'
-  functionAppName: 'cs-activity-func-${subscription().subscriptionId}'
-  functionAppIdentityName: 'cs-activity-func-${subscription().subscriptionId}'
+  functionAppName: 'cs-activity-func-${subscriptionId}' // DO NOT CHANGE - used for registration validation
+  functionAppIdentityName: 'cs-activity-func-${subscriptionId}' // DO NOT CHANGE - used for registration validation
   functionAppDiagnosticSettingName: 'cs-activity-func-to-storage'
   ioaPackageURL: 'https://cs-prod-cloudconnect-templates.s3-us-west-1.amazonaws.com/azure/4.x/ioa.zip'
   storageAccountName: substring('cshorizonact${randomSuffix}', 0, 24)
   storageAccountIdentityName: substring('cshorizonact${randomSuffix}', 0, 24)
   storagePrivateEndpointName: 'activity-storage-private-endpoint'
   storagePrivateEndpointConnectionName: 'cs-activity-storage-private-endpoint'
-  eventHubName: 'cs-eventhub-monitor-activity-logs'
-  diagnosticSetttingsName: 'cs-monitor-activity-to-eventhub'
+  eventHubName: 'cs-eventhub-monitor-activity-logs' // DO NOT CHANGE - used for registration validation
+  diagnosticSetttingsName: 'cs-monitor-activity-to-eventhub' // DO NOT CHANGE - used for registration validation
 }
 
 /* ParameterBag for EntraId Logs */
 param entraLogSettings object = {
   hostingPlanName: 'cs-aad-service-plan'
-  functionAppName: 'cs-aad-func-${subscription().subscriptionId}'
-  functionAppIdentityName: 'cs-aad-func-${subscription().subscriptionId}'
+  functionAppName: 'cs-aad-func-${subscriptionId}' // DO NOT CHANGE - used for registration validation
+  functionAppIdentityName: 'cs-aad-func-${subscriptionId}' // DO NOT CHANGE - used for registration validation
   functionAppDiagnosticSettingName: 'cs-aad-func-to-storage'
   ioaPackageURL: 'https://cs-prod-cloudconnect-templates.s3-us-west-1.amazonaws.com/azure/4.x/ioa.zip'
   storageAccountName: substring('cshorizonaad${randomSuffix}', 0, 24)
   storageAccountIdentityName: substring('cshorizonaad${randomSuffix}', 0, 24)
   storagePrivateEndpointName: 'aad-storage-private-endpoint'
   storagePrivateEndpointConnectionName: 'cs-aad-storage-private-endpoint'
-  eventHubName: 'cs-eventhub-monitor-aad-logs'
-  diagnosticSetttingsName: 'cs-aad-to-eventhub'
+  eventHubName: 'cs-eventhub-monitor-aad-logs' // DO NOT CHANGE - used for registration validation
+  diagnosticSetttingsName: 'cs-aad-to-eventhub' // DO NOT CHANGE - used for registration validation
 }
 
 /* Variables */
-var eventHubNamespaceName = 'cs-horizon-ns-${subscription().subscriptionId}'
+var eventHubNamespaceName = 'cs-horizon-ns-${subscriptionId}' // DO NOT CHANGE - used for registration validation
 var keyVaultName = 'cs-kv-${randomSuffix}'
 var virtualNetworkName = 'cs-vnet'
 var scope = az.resourceGroup(resourceGroup.name)
@@ -260,7 +271,7 @@ module activityLogFunction 'modules/functionApp.bicep' = {
   params: {
     hostingPlanName: activityLogSettings.hostingPlanName
     functionAppName: activityLogSettings.functionAppName
-    userAssignedIdentityId: activityLogFunctionIdentity.outputs.functionIdentityId
+    functionAppIdentityName: activityLogFunctionIdentity.outputs.functionIdentityName
     packageURL: activityLogSettings.ioaPackageURL
     storageAccountName: activityLogSettings.storageAccountName
     eventHubNamespaceName: eventHub.outputs.eventHubNamespaceName
@@ -304,7 +315,7 @@ module entraLogFunction 'modules/functionApp.bicep' = {
   params: {
     hostingPlanName: entraLogSettings.hostingPlanName
     functionAppName: entraLogSettings.functionAppName
-    userAssignedIdentityId: entraLogFunctionIdentity.outputs.functionIdentityId
+    functionAppIdentityName: entraLogFunctionIdentity.outputs.functionIdentityName
     packageURL: entraLogSettings.ioaPackageURL
     storageAccountName: entraLogSettings.storageAccountName
     eventHubNamespaceName: eventHub.outputs.eventHubNamespaceName
@@ -439,6 +450,18 @@ resource entraDiagnosticSetttings 'microsoft.aadiam/diagnosticSettings@2017-04-0
         }
       }
     ]
+  }
+}
+
+/* Set CrowdStrike CSPM Default Azure Subscription */
+module setAzureDefaultSubscription 'modules/defaultSubscription.bicep' = {
+  scope: scope
+  name: '${deploymentNamePrefix}-defaultSubscription-${deploymentNameSuffix}'
+  params: {
+    falconClientId: falconClientId
+    falconClientSecret: falconClientSecret
+    falconCloudRegion: falconCloudRegion
+    tags: tags
   }
 }
 
